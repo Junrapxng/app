@@ -1,6 +1,18 @@
-import { Elysia } from "elysia";
+import { Cookie, Elysia } from "elysia";
+import { jwt } from "@elysiajs/jwt";
+import { staticPlugin } from "@elysiajs/static";
+
 
 const app = new Elysia()
+  .use(staticPlugin({
+    assets: './uploads',
+    prefix: '/uploads'
+  }))
+  .use(jwt({
+    name: "jwt",
+    secret: "secret from elysia",
+  }))
+
   .get("/", () => "Elysia Framework")
   .get("/hello", () => {
     return { message: "Hello World" }
@@ -81,6 +93,68 @@ const app = new Elysia()
   }) => {
     const id = params.id;
     return { message: `Customer ${id} deleted` }
+  })
+
+  .post("/user/signin", async ({ jwt, set, body }: {
+    jwt: any,
+    set: any
+    body: {
+      username: string,
+      password: string
+    }
+  }) => {
+    try {
+      const { username, password } = body;
+
+      if (username !== "admin" || password !== "1234") {
+        set.status = 401; // Unauthorized
+        return { message: "Invalid username or password" }
+      }
+
+      const token = await jwt.sign({ username }, { expiresIn: "1d" });
+      return { token };
+    } catch (error: any) {
+      set.status = 500;
+      return { error: error.message }
+    }
+  })
+
+  .get("/user/profile", async ({ jwt, cookie: { auth } }: {
+    jwt: any,
+    cookie: any
+  }) => {
+    const { username } = await jwt.verify(auth.value);
+    return { message: `Hello ${username}` }
+  })
+
+  .get("user/profileFromToken", async ({ jwt, request }: {
+    jwt: any,
+    request: Request
+  }) => {
+    const authorization = request.headers.get("Authorization");
+    const token = authorization?.split(" ")[1];
+    const { username } = await jwt.verify(token);
+    return { message: `Hello ${username}` }
+  })
+
+  .post("/upload-file", async ({ body }: {
+    body: {
+      file: File
+    }
+  }) => {
+    const file = body.file;
+    Bun.write("uploads/" + file.name, file);
+    return { message: "File uploaded successfully" }
+  })
+
+  .get("write-file", () => {
+    Bun.write("uploads/test.txt", "Hello World");
+    return { message: "File written successfully" }
+  })
+
+  .get("read-file", () => {
+    const file = Bun.file("uploads/test.txt");
+    return file.text();
   })
 
   // listen to port 3000
